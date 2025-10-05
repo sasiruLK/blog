@@ -1,0 +1,35 @@
+name: Build Zola Site
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+
+    - name: Install Zola
+      run: cargo install zola --version 0.21.0
+
+    - name: Build Zola Site
+      run: zola build
+
+    - name: Commit public folder
+      uses: stefanzweifel/git-auto-commit-action@v4
+      with:
+        commit_message: "Build Zola site [skip ci]"
+        file_pattern: "public"
+
