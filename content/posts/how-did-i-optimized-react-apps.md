@@ -7,7 +7,7 @@ draft = false
 
 [taxonomies]
 tags = ["react", "performance"]
-categories = ["frontend", "react"]
+categories = ["frontend", "react", "performance"]
 
 [extra]
 lang = "en"
