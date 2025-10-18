@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  
+  
+    
+  
+  <meta name="description" content="A practical guide to React’s rendering cycle, fibers, and how to avoid unnecessary re-renders.">
+
+  <title>Understanding React Rendering and Re-renders</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="https://sasiru.lk/img/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="https://sasiru.lk/img/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="https://sasiru.lk/img/apple-touch-icon.png">
+  
+  <style>
+
+  /* light mode colors */
+  body {
+    --primary-color: #5871a2;
+    --primary-pale-color: #5871a233;
+    --primary-decoration-color: #5871a210;
+    --bg-color: #ffffff;
+    --text-color: #2f3030;
+    --text-pale-color: #767676;
+    --text-decoration-color: #a9a9a9;
+    --highlight-mark-color: #5f75b020;
+
+    --callout-note-color: #5871a2;
+    --callout-tip-color: #268556;
+    --callout-important-color: #885fc9;
+    --callout-warning-color: #ab6632;
+    --callout-caution-color: #c64e4e;
+  }
+
+  /* dark mode colors */
+  body.dark {
+    --primary-color: #6f8fd1;
+    --primary-pale-color: #6f8fd166;
+    --primary-decoration-color: #6f8fd112;
+    --bg-color: #1c1c1c;
+    --text-color: #c1c1c1;
+    --text-pale-color: #848484;
+    --text-decoration-color: #5f5f5f;
+    --highlight-mark-color: #8296cb3b;
+
+    --callout-note-color: #6f8fd1;
+    --callout-tip-color: #47976f;
+    --callout-important-color: #9776cd;
+    --callout-warning-color: #ad7a52;
+    --callout-caution-color: #d06161;
+  }
+
+  /* typography */
+  body {
+    --main-font: ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+    --code-font: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+    --homepage-max-width: 768px;
+    --main-max-width: 768px;
+    --avatar-size: 60px;
+    --font-size: 16px;
+    --line-height: 1.75;
+    --img-border-radius: 0px;
+    --detail-border-radius: 0px;
+    --dark-mode-img-brightness: 0.75;
+    --dark-mode-chart-brightness: 0.75;
+    --inline-code-border-radius: 2px;
+    --inline-code-bg-color: var(--primary-decoration-color);
+    --block-code-border-radius: 0px;
+    --block-code-border-color: var(--primary-color);
+    --detail-border-color: var(--primary-color);
+  }
+
+</style>
+
+  <link rel="stylesheet" href="https://sasiru.lk/main.css">
+  
+
+<link id="hl" rel="stylesheet" type="text/css" href="/hl-light.css" />
+
+
+
+  
+</head>
+
+<body class="post">
+  
+  <script>
+    const theme = sessionStorage.getItem('theme');
+    const match = window.matchMedia("(prefers-color-scheme: dark)").matches
+    if ((theme && theme == 'dark') || (!theme && match)) {
+      document.body.classList.add('dark');
+      const hl = document.querySelector('link#hl');
+      if (hl) hl.href = 'https://sasiru.lk/hl-dark.css';
+    }
+  </script>
+  
+  
+<div id="wrapper">
+  <div id="blank"></div>
+  <aside>
+    
+    
+    <nav>
+      <ul>
+        
+        <li>
+          <a class="h2" href="#react-rendering">React rendering</a>
+          
+          <ul>
+            
+            <li>
+              <a class="h3" href="#react-developer-tools">React developer tools</a>
+            </li>
+            
+            <li>
+              <a class="h3" href="#react-rendering-cycle">React rendering cycle</a>
+            </li>
+            
+            <li>
+              <a class="h3" href="#reducing-renders">Reducing renders</a>
+            </li>
+            
+            <li>
+              <a class="h3" href="#context">Context</a>
+            </li>
+            
+            <li>
+              <a class="h3" href="#note-from-dan">Note From Dan</a>
+            </li>
+            
+          </ul>
+          
+        </li>
+        
+      </ul>
+    </nav>
+    
+    
+    <button id="back-to-top" aria-label="back to top">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-arrow-up"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+
+    </button>
+    
+  </aside>
+  <main>
+    
+<header>
+  <nav>
+    <a id="back-link" href="https:&#x2F;&#x2F;sasiru.lk&#x2F;posts">← Back</a>
+  </nav>
+</header>
+
+
+    <div>
+      
+      
+      
+      
+      <div id="copy-cfg" style="display: none;" data-copy-icon="&lt;svg xmlns=&quot;http:&#x2F;&#x2F;www.w3.org&#x2F;2000&#x2F;svg&quot; viewBox=&quot;0 0 24 24&quot; width=&quot;18&quot; height=&quot;18&quot;&gt;&lt;path d=&quot;M6.9998 6V3C6.9998 2.44772 7.44752 2 7.9998 2H19.9998C20.5521 2 20.9998 2.44772 20.9998 3V17C20.9998 17.5523 20.5521 18 19.9998 18H16.9998V20.9991C16.9998 21.5519 16.5499 22 15.993 22H4.00666C3.45059 22 3 21.5554 3 20.9991L3.0026 7.00087C3.0027 6.44811 3.45264 6 4.00942 6H6.9998ZM5.00242 8L5.00019 20H14.9998V8H5.00242ZM8.9998 6H16.9998V16H18.9998V4H8.9998V6Z&quot; fill=&quot;currentColor&quot;&gt;&lt;&#x2F;path&gt;&lt;&#x2F;svg&gt;
+" data-check-icon="&lt;svg xmlns=&quot;http:&#x2F;&#x2F;www.w3.org&#x2F;2000&#x2F;svg&quot; viewBox=&quot;0 0 24 24&quot; width=&quot;18&quot; height=&quot;18&quot;&gt;&lt;path d=&quot;M10.0007 15.1709L19.1931 5.97852L20.6073 7.39273L10.0007 17.9993L3.63672 11.6354L5.05093 10.2212L10.0007 15.1709Z&quot; fill=&quot;currentColor&quot;&gt;&lt;&#x2F;path&gt;&lt;&#x2F;svg&gt;
+"></div>
+      
+      <article class="prose">
+        <h1>Understanding React Rendering and Re-renders</h1>
+        <div id="post-info">
+          <div id="date">
+            <span id="publish">Jan 1, 2022</span>
+            <span>Updated on <span id="updated">Jan 1, 2025</span></span>
+            </div>
+
+          
+          <div id="tags">
+            <a class="instant" href="https://sasiru.lk/tags/react"><span>#</span>react</a><a class="instant" href="https://sasiru.lk/tags/performance"><span>#</span>performance</a>
+          </div>
+          
+        </div>
+
+        
+        
+
+        
+
+        <h1 id="react-rendering">React rendering<a class="zola-anchor" href="#react-rendering" aria-label="Anchor link for: react-rendering" style="visibility: hidden;"></a>
+</h1>
+<h2 id="react-developer-tools">React developer tools<a class="zola-anchor" href="#react-developer-tools" aria-label="Anchor link for: react-developer-tools" style="visibility: hidden;"></a>
+</h2>
+<p>You can download the React Developer Tools for most of the major browsers.</p>
+<ul>
+<li><a rel="nofollow noreferrer" href="https://chrome.google.com/webstore/detail/react-developer-tools/fmkadmapgofadopljbjfkapdkoienihi?hl=en">React Developer Tools for Chrome</a></li>
+<li><a rel="nofollow noreferrer" href="https://addons.mozilla.org/en-US/firefox/addon/react-devtools/">React Developer Tools for Firefox</a></li>
+<li><a rel="nofollow noreferrer" href="https://microsoftedge.microsoft.com/addons/detail/react-developer-tools/gpphkfbcpidddadnkolkpfckpihlkkil">React Developer Tools for Microsoft Edge</a></li>
+</ul>
+<p>Once you have the extension installed, you'll see there is a new tab in your developer tools called ⚛️ Profiler. You can change the settings to record an explanation of why each component re-rendered in in the recording.</p>
+<p>You can also have it highlight the parts of the DOM that re-render while you're kicking the tires on your application. Go in to the settings for the profiler and select "Highlight updates when components render."</p>
+<p>This will get your a fun green rectangle around anything that is going through a re-render as you interact with your application.</p>
+<h2 id="react-rendering-cycle">React rendering cycle<a class="zola-anchor" href="#react-rendering-cycle" aria-label="Anchor link for: react-rendering-cycle" style="visibility: hidden;"></a>
+</h2>
+<p>React starts at the root of the component tree and works its way downward in hopes of finding all of the components that need updating. It does this by calling each component with its current props and looking at the output to determine if anything has changed.</p>
+<p>Once React has worked its way through the entire component tree, it compares this new tree to the current state of the world and figures out what it needs to do the DOM in order to get everything up to date.</p>
+<p>Rendering is not the same as updating the DOM. You could render a component and have the results be exactly the same as it was last time, which means that we don't need to update the DOM.</p>
+<h3 id="phases">Phases<a class="zola-anchor" href="#phases" aria-label="Anchor link for: phases" style="visibility: hidden;"></a>
+</h3>
+<ul>
+<li>Render phase is where we render everything and calculate all of the changes that we need to do in order to get everything up to date.</li>
+<li>Commit phase is where React goes ahead and makes those aforementioned changes to the DOM.
+<ul>
+<li>After React has updated the DOM, it updates all of the `ref`s to make sure they're pointing to the correct DOM nodes.</li>
+<li>Next up, it synchronously runs the<code>useLayoutEffect</code> hooks.</li>
+<li>Once this is all behind us, we move into the Passive Effects phase React then lets go on the main thread for a moment and pops a short timeout on the event loop before running all of the <code>useEffect</code> hooks.</li>
+</ul>
+</li>
+</ul>
+<p>React 18 introduced <a rel="nofollow noreferrer" title="concurrent rendering" href="https://www.telerik.com/blogs/concurrent-rendering-react-18">concurrent rendering,</a> which brought with it features like <code>useTransition</code>.</p>
+<p>The high-level is that this gives React the ability to pause work in the rendering phase to allow the browser to handle events. After it does this, React steps back in. Depending on what went down, it will either resume, throw away, or recalculate that work later. The commit phase then goes down as normal.</p>
+<p>To my previous point about how rendering might not result in needing any updates to the DOM.</p>
+<p>On Rendering</p>
+<p>In order to kick off the render phase, one of the following has to go down:</p>
+<p>- The state is updated via either the <code>useState</code> or <code>useReducer</code> hooks.</p>
+<p>- Then calls a <code>ReactDOM.Root</code>'s render method again.</p>
+<p>- The <code>useExternalSyncStore</code> hook is called.</p>
+<p>By default, a parent component renders, React will work its way down the component tree re-rendering all of the child components. It doesn't care if the props changed. The only requirement that React cares about is whether or not the parent component rendered, that enough to get a child component re-rendered. Now, that doesn't mean that the DOM is going to need to be updated in anyway, but this is how React comes that conclusion.</p>
+<h3 id="on-committing">On Committing<a class="zola-anchor" href="#on-committing" aria-label="Anchor link for: on-committing" style="visibility: hidden;"></a>
+</h3>
+<p>React calls the following during the <strong>commit phase</strong>: <code>useLayoutEffect</code>. But, it's important to note that it calls these hooks before it has had a chance to paint.</p>
+<p>The browser won't paint anything while JavaScript is executing and blocking the event loop. It'll wait for you to finish. This is why React runs all of these synchronously.</p>
+<h3 id="fibers">Fibers<a class="zola-anchor" href="#fibers" aria-label="Anchor link for: fibers" style="visibility: hidden;"></a>
+</h3>
+<p>React keeps track of all of the current component instances. One of the core pieces of this data structure called a fiber, which have been around since React 16. When a component is rendered for the first time, React goes ahead and creates a fiber object to track the component instance. React stores all of the hooks for a component as a linked list attached to that component's fiber.</p>
+<p>Fibers are in charge of answering the following questions:</p>
+<p>- What type of component are we expecting at this point in the component tree? Was it a <code>div</code> last time and now its a <code>span</code>? Well, then we probably need to reconcile that.</p>
+<p>- What are the current props and state associated with this component instance?</p>
+<p>- Who are its parents, siblings, and children?</p>
+<p>To the first bullet point, if React sees that a component type has changed, it will try to optimize for the likely scenario that this is a fundamentally different tree from this point forward and it will just toss the entire sub-tree out and start over. This is where doing crazy stuff like dynamically defining components inside of another one can get you into trouble. This will be a different component in memory and it will cause React to take drastic measures.</p>
+<h3 id="avoiding-expensive-state-initialization">Avoiding expensive state initialization<a class="zola-anchor" href="#avoiding-expensive-state-initialization" aria-label="Anchor link for: avoiding-expensive-state-initialization" style="visibility: hidden;"></a>
+</h3>
+<p>Let's say that you have some expensive function that you need to call in order to initialize your component or application.</p>
+<pre data-lang="javascript" class="language-javascript z-code"><code class="language-javascript" data-lang="javascript"><span class="z-source z-ts"><span class="z-meta z-var z-expr z-ts"><span class="z-storage z-type z-ts">const</span> <span class="z-meta z-array-binding-pattern-variable z-ts"><span class="z-punctuation z-definition z-binding-pattern z-array z-ts">[</span><span class="z-meta z-definition z-variable z-ts"><span class="z-variable z-other z-constant z-ts">state</span></span><span class="z-punctuation z-separator z-comma z-ts">,</span> <span class="z-meta z-definition z-variable z-ts"><span class="z-variable z-other z-constant z-ts">setState</span></span><span class="z-punctuation z-definition z-binding-pattern z-array z-ts">]</span> </span><span class="z-keyword z-operator z-assignment z-ts">=</span> <span class="z-meta z-function-call z-ts"><span class="z-entity z-name z-function z-ts">useState</span></span><span class="z-meta z-brace z-round z-ts">(</span><span class="z-meta z-function-call z-ts"><span class="z-entity z-name z-function z-ts">expensiveFn</span></span><span class="z-meta z-brace z-round z-ts">(</span><span class="z-meta z-brace z-round z-ts">)</span><span class="z-meta z-brace z-round z-ts">)</span></span>
+</span></code></pre>
+<p>Your component is a function that is called every render. This means you're going to call <code>expensiveFn()</code> every time. And you know what? It's expensive.</p>
+<p>An alternative approach is to pass the <code>useState</code> a function to tell it how to initialize itself the first time</p>
+<pre data-lang="javascript" class="language-javascript z-code"><code class="language-javascript" data-lang="javascript"><span class="z-source z-ts"><span class="z-meta z-var z-expr z-ts"><span class="z-storage z-type z-ts">const</span> <span class="z-meta z-array-binding-pattern-variable z-ts"><span class="z-punctuation z-definition z-binding-pattern z-array z-ts">[</span><span class="z-meta z-definition z-variable z-ts"><span class="z-variable z-other z-constant z-ts">state</span></span><span class="z-punctuation z-separator z-comma z-ts">,</span> <span class="z-meta z-definition z-variable z-ts"><span class="z-variable z-other z-constant z-ts">setState</span></span><span class="z-punctuation z-definition z-binding-pattern z-array z-ts">]</span> </span><span class="z-keyword z-operator z-assignment z-ts">=</span> <span class="z-meta z-function-call z-ts"><span class="z-entity z-name z-function z-ts">useState</span></span><span class="z-meta z-brace z-round z-ts">(</span><span class="z-meta z-arrow z-ts"><span class="z-meta z-parameters z-ts"><span class="z-punctuation z-definition z-parameters z-begin z-ts">(</span><span class="z-punctuation z-definition z-parameters z-end z-ts">)</span></span> </span><span class="z-meta z-arrow z-ts"><span class="z-storage z-type z-function z-arrow z-ts">=&gt;</span> </span><span class="z-meta z-function-call z-ts"><span class="z-entity z-name z-function z-ts">getExpensiveThing</span></span><span class="z-meta z-brace z-round z-ts">(</span><span class="z-meta z-brace z-round z-ts">)</span><span class="z-meta z-brace z-round z-ts">)</span></span>
+</span></code></pre>
+<p><code>useState</code> will call that function the first time it sets up <code>state</code> and <code>setState</code> and that's it.</p>
+<h2 id="reducing-renders">Reducing renders<a class="zola-anchor" href="#reducing-renders" aria-label="Anchor link for: reducing-renders" style="visibility: hidden;"></a>
+</h2>
+<h3 id="pushing-state-down-pulling-state-up">Pushing State Down &amp; Pulling State Up<a class="zola-anchor" href="#pushing-state-down-pulling-state-up" aria-label="Anchor link for: pushing-state-down-pulling-state-up" style="visibility: hidden;"></a>
+</h3>
+<p>Dan Abramov well explained this on his blog. So I don't want to write about this. You can find the article <a rel="nofollow noreferrer" title="here" href="https://overreacted.io/before-you-memo/">here</a>.</p>
+<h3 id="some-more-tools">Some more tools<a class="zola-anchor" href="#some-more-tools" aria-label="Anchor link for: some-more-tools" style="visibility: hidden;"></a>
+</h3>
+<p>React has hooks to help</p>
+<ul>
+<li>useMemo lets you cache the result of a calculation(a value basically) between re-renders.</li>
+<li>useCallback lets you cache a function definition between re-renders.</li>
+</ul>
+<p>Let's check the function below.</p>
+<pre data-lang="typescript" class="language-typescript z-code"><code class="language-typescript" data-lang="typescript"><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-storage z-type z-function z-ts">function</span> <span class="z-meta z-definition z-function z-ts"><span class="z-entity z-name z-function z-ts">handleAddTodo</span></span><span class="z-meta z-parameters z-ts"><span class="z-punctuation z-definition z-parameters z-begin z-ts">(</span><span class="z-variable z-parameter z-ts">text</span><span class="z-punctuation z-definition z-parameters z-end z-ts">)</span></span> <span class="z-meta z-block z-ts"><span class="z-punctuation z-definition z-block z-ts">{</span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts">  <span class="z-meta z-var z-expr z-ts"><span class="z-storage z-type z-ts">const</span> <span class="z-meta z-var-single-variable z-expr z-ts"><span class="z-meta z-definition z-variable z-ts"><span class="z-variable z-other z-constant z-ts">newTodo</span></span> </span><span class="z-keyword z-operator z-assignment z-ts">=</span> <span class="z-meta z-objectliteral z-ts"><span class="z-punctuation z-definition z-block z-ts">{</span> <span class="z-meta z-object z-member z-ts"><span class="z-meta z-object-literal z-key z-ts">id</span></span><span class="z-meta z-object z-member z-ts"><span class="z-meta z-object-literal z-key z-ts"><span class="z-punctuation z-separator z-key-value z-ts">:</span></span> <span class="z-variable z-other z-readwrite z-ts">nextId</span><span class="z-keyword z-operator z-increment z-ts">++</span></span><span class="z-punctuation z-separator z-comma z-ts">,</span> <span class="z-meta z-object z-member z-ts"><span class="z-variable z-other z-readwrite z-ts">text</span> </span><span class="z-punctuation z-definition z-block z-ts">}</span></span></span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts">  <span class="z-meta z-function-call z-ts"><span class="z-entity z-name z-function z-ts">setTodos</span></span><span class="z-meta z-brace z-round z-ts">(</span><span class="z-meta z-array z-literal z-ts"><span class="z-meta z-brace z-square z-ts">[</span><span class="z-keyword z-operator z-spread z-ts">...</span><span class="z-variable z-other z-readwrite z-ts">todos</span><span class="z-punctuation z-separator z-comma z-ts">,</span> <span class="z-variable z-other z-readwrite z-ts">newTodo</span><span class="z-meta z-brace z-square z-ts">]</span></span><span class="z-meta z-brace z-round z-ts">)</span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts"><span class="z-punctuation z-definition z-block z-ts">}</span></span></span>
+</span></code></pre>
+<p>So the thing here is we're re-creating these functions on every render. Above is an anonymous function each an every time and it's a different object in memory from the last time we whipped up a function.</p>
+<p>But, things get a little bit trickier. We could try to wrap these functions in useCallback.</p>
+<pre data-lang="typescript" class="language-typescript z-code"><code class="language-typescript" data-lang="typescript"><span class="z-source z-ts"><span class="z-meta z-var z-expr z-ts"><span class="z-storage z-type z-ts">const</span> <span class="z-meta z-var-single-variable z-expr z-ts"><span class="z-meta z-definition z-variable z-ts"><span class="z-variable z-other z-constant z-ts">handleAddTodo</span></span> </span><span class="z-keyword z-operator z-assignment z-ts">=</span> <span class="z-meta z-function-call z-ts"><span class="z-entity z-name z-function z-ts">useCallback</span></span><span class="z-meta z-brace z-round z-ts">(</span><span class="z-meta z-arrow z-ts"><span class="z-meta z-parameters z-ts"><span class="z-punctuation z-definition z-parameters z-begin z-ts">(</span><span class="z-variable z-parameter z-ts">text</span><span class="z-punctuation z-definition z-parameters z-end z-ts">)</span></span> </span><span class="z-meta z-arrow z-ts"><span class="z-storage z-type z-function z-arrow z-ts">=&gt;</span> <span class="z-meta z-block z-ts"><span class="z-punctuation z-definition z-block z-ts">{</span>
+</span></span></span></span><span class="z-source z-ts"><span class="z-meta z-var z-expr z-ts"><span class="z-meta z-arrow z-ts"><span class="z-meta z-block z-ts">  <span class="z-meta z-var z-expr z-ts"><span class="z-storage z-type z-ts">const</span> <span class="z-meta z-var-single-variable z-expr z-ts"><span class="z-meta z-definition z-variable z-ts"><span class="z-variable z-other z-constant z-ts">newTodo</span></span> </span><span class="z-keyword z-operator z-assignment z-ts">=</span> <span class="z-meta z-objectliteral z-ts"><span class="z-punctuation z-definition z-block z-ts">{</span> <span class="z-meta z-object z-member z-ts"><span class="z-meta z-object-literal z-key z-ts">id</span></span><span class="z-meta z-object z-member z-ts"><span class="z-meta z-object-literal z-key z-ts"><span class="z-punctuation z-separator z-key-value z-ts">:</span></span> <span class="z-variable z-other z-readwrite z-ts">nextId</span><span class="z-keyword z-operator z-increment z-ts">++</span></span><span class="z-punctuation z-separator z-comma z-ts">,</span> <span class="z-meta z-object z-member z-ts"><span class="z-variable z-other z-readwrite z-ts">text</span> </span><span class="z-punctuation z-definition z-block z-ts">}</span></span></span>
+</span></span></span></span><span class="z-source z-ts"><span class="z-meta z-var z-expr z-ts"><span class="z-meta z-arrow z-ts"><span class="z-meta z-block z-ts">  <span class="z-meta z-function-call z-ts"><span class="z-entity z-name z-function z-ts">setTodos</span></span><span class="z-meta z-brace z-round z-ts">(</span><span class="z-meta z-array z-literal z-ts"><span class="z-meta z-brace z-square z-ts">[</span><span class="z-keyword z-operator z-spread z-ts">...</span><span class="z-variable z-other z-readwrite z-ts">todos</span><span class="z-punctuation z-separator z-comma z-ts">,</span> <span class="z-variable z-other z-readwrite z-ts">newTodo</span><span class="z-meta z-brace z-square z-ts">]</span></span><span class="z-meta z-brace z-round z-ts">)</span>
+</span></span></span></span><span class="z-source z-ts"><span class="z-meta z-var z-expr z-ts"><span class="z-meta z-arrow z-ts"><span class="z-meta z-block z-ts"><span class="z-punctuation z-definition z-block z-ts">}</span></span></span><span class="z-punctuation z-separator z-comma z-ts">,</span><span class="z-meta z-array z-literal z-ts"> <span class="z-meta z-brace z-square z-ts">[</span><span class="z-variable z-other z-readwrite z-ts">todos</span><span class="z-meta z-brace z-square z-ts">]</span></span><span class="z-meta z-brace z-round z-ts">)</span></span>
+</span></code></pre>
+<p>It technically works, but it doesn't exactly do us a lot of good. The problem is that todos is really the only thing we're ever dealing with in this application and it's basically changing every time we do anything.</p>
+<p>React will automatically pass the current version that you were working with when it goes to update the state. This mean, you don't need to pass a reference to it.</p>
+<p>So what you could do is</p>
+<pre data-lang="typescript" class="language-typescript z-code"><code class="language-typescript" data-lang="typescript"><span class="z-source z-ts"><span class="z-meta z-var z-expr z-ts"><span class="z-storage z-type z-ts">const</span> <span class="z-meta z-var-single-variable z-expr z-ts"><span class="z-meta z-definition z-variable z-ts"><span class="z-variable z-other z-constant z-ts">handleAddTodo</span></span> </span><span class="z-keyword z-operator z-assignment z-ts">=</span> <span class="z-meta z-function-call z-ts"><span class="z-entity z-name z-function z-ts">useCallback</span></span><span class="z-meta z-brace z-round z-ts">(</span><span class="z-meta z-arrow z-ts"><span class="z-meta z-parameters z-ts"><span class="z-punctuation z-definition z-parameters z-begin z-ts">(</span><span class="z-variable z-parameter z-ts">text</span><span class="z-punctuation z-definition z-parameters z-end z-ts">)</span></span> </span><span class="z-meta z-arrow z-ts"><span class="z-storage z-type z-function z-arrow z-ts">=&gt;</span> <span class="z-meta z-block z-ts"><span class="z-punctuation z-definition z-block z-ts">{</span>
+</span></span></span></span><span class="z-source z-ts"><span class="z-meta z-var z-expr z-ts"><span class="z-meta z-arrow z-ts"><span class="z-meta z-block z-ts">  <span class="z-meta z-var z-expr z-ts"><span class="z-storage z-type z-ts">const</span> <span class="z-meta z-var-single-variable z-expr z-ts"><span class="z-meta z-definition z-variable z-ts"><span class="z-variable z-other z-constant z-ts">newTodo</span></span> </span><span class="z-keyword z-operator z-assignment z-ts">=</span> <span class="z-meta z-objectliteral z-ts"><span class="z-punctuation z-definition z-block z-ts">{</span> <span class="z-meta z-object z-member z-ts"><span class="z-meta z-object-literal z-key z-ts">id</span></span><span class="z-meta z-object z-member z-ts"><span class="z-meta z-object-literal z-key z-ts"><span class="z-punctuation z-separator z-key-value z-ts">:</span></span> <span class="z-variable z-other z-readwrite z-ts">nextId</span><span class="z-keyword z-operator z-increment z-ts">++</span></span><span class="z-punctuation z-separator z-comma z-ts">,</span> <span class="z-meta z-object z-member z-ts"><span class="z-variable z-other z-readwrite z-ts">text</span> </span><span class="z-punctuation z-definition z-block z-ts">}</span></span></span>
+</span></span></span></span><span class="z-source z-ts"><span class="z-meta z-var z-expr z-ts"><span class="z-meta z-arrow z-ts"><span class="z-meta z-block z-ts">  <span class="z-meta z-function-call z-ts"><span class="z-entity z-name z-function z-ts">setTodos</span></span><span class="z-meta z-brace z-round z-ts">(</span><span class="z-meta z-arrow z-ts"><span class="z-variable z-parameter z-ts">todos</span> </span><span class="z-meta z-arrow z-ts"><span class="z-storage z-type z-function z-arrow z-ts">=&gt;</span><span class="z-meta z-array z-literal z-ts"> <span class="z-meta z-brace z-square z-ts">[</span><span class="z-keyword z-operator z-spread z-ts">...</span><span class="z-variable z-other z-readwrite z-ts">todos</span><span class="z-punctuation z-separator z-comma z-ts">,</span> <span class="z-variable z-other z-readwrite z-ts">newTodo</span><span class="z-meta z-brace z-square z-ts">]</span></span></span><span class="z-meta z-brace z-round z-ts">)</span>
+</span></span></span></span><span class="z-source z-ts"><span class="z-meta z-var z-expr z-ts"><span class="z-meta z-arrow z-ts"><span class="z-meta z-block z-ts"><span class="z-punctuation z-definition z-block z-ts">}</span></span></span><span class="z-punctuation z-separator z-comma z-ts">,</span><span class="z-meta z-array z-literal z-ts"> <span class="z-meta z-brace z-square z-ts">[</span><span class="z-meta z-brace z-square z-ts">]</span></span><span class="z-meta z-brace z-round z-ts">)</span></span>
+</span></code></pre>
+<h2 id="context">Context<a class="zola-anchor" href="#context" aria-label="Anchor link for: context" style="visibility: hidden;"></a>
+</h2>
+<p>So let's say if you want to use context</p>
+<pre data-lang="typescript" class="language-typescript z-code"><code class="language-typescript" data-lang="typescript"><span class="z-source z-ts"><span class="z-meta z-var z-expr z-ts"><span class="z-storage z-type z-ts">const</span> <span class="z-meta z-var-single-variable z-expr z-ts"><span class="z-meta z-definition z-variable z-ts"><span class="z-variable z-other z-constant z-ts">TodoContext</span></span> </span><span class="z-keyword z-operator z-assignment z-ts">=</span> <span class="z-meta z-function-call z-ts"><span class="z-entity z-name z-function z-ts">createContext</span></span><span class="z-meta z-brace z-round z-ts">(</span><span class="z-variable z-other z-readwrite z-ts">initialContextValues</span><span class="z-meta z-brace z-round z-ts">)</span></span>
+</span><span class="z-source z-ts">
+</span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-storage z-type z-function z-ts">function</span> <span class="z-meta z-definition z-function z-ts"><span class="z-entity z-name z-function z-ts">Todo</span></span><span class="z-meta z-parameters z-ts"><span class="z-punctuation z-definition z-parameters z-begin z-ts">(</span><span class="z-punctuation z-definition z-parameters z-end z-ts">)</span></span> <span class="z-meta z-block z-ts"><span class="z-punctuation z-definition z-block z-ts">{</span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts">  <span class="z-meta z-var z-expr z-ts"><span class="z-storage z-type z-ts">const</span> <span class="z-meta z-array-binding-pattern-variable z-ts"><span class="z-punctuation z-definition z-binding-pattern z-array z-ts">[</span><span class="z-meta z-definition z-variable z-ts"><span class="z-variable z-other z-constant z-ts">state</span></span><span class="z-punctuation z-separator z-comma z-ts">,</span> <span class="z-meta z-definition z-variable z-ts"><span class="z-variable z-other z-constant z-ts">dispatch</span></span><span class="z-punctuation z-definition z-binding-pattern z-array z-ts">]</span> </span><span class="z-keyword z-operator z-assignment z-ts">=</span> <span class="z-meta z-function-call z-ts"><span class="z-entity z-name z-function z-ts">useReducer</span></span><span class="z-meta z-brace z-round z-ts">(</span><span class="z-variable z-other z-readwrite z-ts">reducer</span><span class="z-punctuation z-separator z-comma z-ts">,</span> <span class="z-variable z-other z-readwrite z-ts">initialArg</span><span class="z-meta z-brace z-round z-ts">)</span></span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts">  <span class="z-keyword z-control z-flow z-ts">return</span> <span class="z-meta z-brace z-round z-ts">(</span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts">    <span class="z-keyword z-operator z-relational z-ts">&lt;</span><span class="z-variable z-other z-object z-ts">TodoContext</span><span class="z-punctuation z-accessor z-ts">.</span><span class="z-variable z-other z-property z-ts">Provider</span> <span class="z-variable z-other z-readwrite z-ts">value</span><span class="z-keyword z-operator z-assignment z-ts">=</span><span class="z-meta z-objectliteral z-ts"><span class="z-punctuation z-definition z-block z-ts">{</span>{ <span class="z-meta z-object z-member z-ts"><span class="z-variable z-other z-readwrite z-ts">state</span></span><span class="z-punctuation z-separator z-comma z-ts">,</span> <span class="z-meta z-object z-member z-ts"><span class="z-variable z-other z-readwrite z-ts">dispatch</span> </span><span class="z-punctuation z-definition z-block z-ts">}</span></span>}<span class="z-keyword z-operator z-relational z-ts">&gt;</span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts"><span class="z-meta z-parameter z-object-binding-pattern z-ts">      <span class="z-punctuation z-definition z-binding-pattern z-object z-ts">{</span> <span class="z-variable z-parameter z-ts">children</span> <span class="z-punctuation z-definition z-binding-pattern z-object z-ts">}</span></span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts">    <span class="z-keyword z-operator z-relational z-ts">&lt;</span><span class="z-keyword z-operator z-arithmetic z-ts">/</span><span class="z-variable z-other z-readwrite z-ts">TodoContext</span><span class="z-keyword z-operator z-relational z-ts">&gt;</span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts">  <span class="z-meta z-brace z-round z-ts">)</span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts"><span class="z-punctuation z-definition z-block z-ts">}</span></span></span>
+</span><span class="z-source z-ts">
+</span></code></pre>
+<p>Now every children components are going to re-render every time state change. So the problem is we are putting state in a brand new object. That brand new object is not the same as previous one. Items or dispatch might be the same but the object is new. So it invalidates the useMemo or useCallback checks if you put those.</p>
+<p>So what's the solution here ?</p>
+<p>Two contexts</p>
+<p>One context create our problem. So Two context is our way out. One for the things that change. One for the things that don't change.</p>
+<pre data-lang="typescript" class="language-typescript z-code"><code class="language-typescript" data-lang="typescript"><span class="z-source z-ts"><span class="z-meta z-var z-expr z-ts"><span class="z-storage z-type z-ts">const</span> <span class="z-meta z-var-single-variable z-expr z-ts"><span class="z-meta z-definition z-variable z-ts"><span class="z-variable z-other z-constant z-ts">TodoContext</span></span> </span><span class="z-keyword z-operator z-assignment z-ts">=</span> <span class="z-meta z-function-call z-ts"><span class="z-entity z-name z-function z-ts">createContext</span></span><span class="z-meta z-brace z-round z-ts">(</span><span class="z-variable z-other z-readwrite z-ts">initialTodoItems</span><span class="z-meta z-brace z-round z-ts">)</span></span>
+</span><span class="z-source z-ts"><span class="z-meta z-var z-expr z-ts"><span class="z-storage z-type z-ts">const</span> <span class="z-meta z-var-single-variable z-expr z-ts"><span class="z-meta z-definition z-variable z-ts"><span class="z-variable z-other z-constant z-ts">ActionContext</span></span> </span><span class="z-keyword z-operator z-assignment z-ts">=</span> <span class="z-meta z-function-call z-ts"><span class="z-entity z-name z-function z-ts">createContext</span></span><span class="z-meta z-brace z-round z-ts">(</span><span class="z-variable z-other z-readwrite z-ts">initialDispatch</span><span class="z-meta z-brace z-round z-ts">)</span></span>
+</span><span class="z-source z-ts">
+</span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-storage z-type z-function z-ts">function</span> <span class="z-meta z-definition z-function z-ts"><span class="z-entity z-name z-function z-ts">Todo</span></span><span class="z-meta z-parameters z-ts"><span class="z-punctuation z-definition z-parameters z-begin z-ts">(</span><span class="z-punctuation z-definition z-parameters z-end z-ts">)</span></span> <span class="z-meta z-block z-ts"><span class="z-punctuation z-definition z-block z-ts">{</span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts">  <span class="z-meta z-var z-expr z-ts"><span class="z-storage z-type z-ts">const</span> <span class="z-meta z-array-binding-pattern-variable z-ts"><span class="z-punctuation z-definition z-binding-pattern z-array z-ts">[</span><span class="z-meta z-definition z-variable z-ts"><span class="z-variable z-other z-constant z-ts">state</span></span><span class="z-punctuation z-separator z-comma z-ts">,</span> <span class="z-meta z-definition z-variable z-ts"><span class="z-variable z-other z-constant z-ts">dispatch</span></span><span class="z-punctuation z-definition z-binding-pattern z-array z-ts">]</span> </span><span class="z-keyword z-operator z-assignment z-ts">=</span> <span class="z-meta z-function-call z-ts"><span class="z-entity z-name z-function z-ts">useReducer</span></span><span class="z-meta z-brace z-round z-ts">(</span><span class="z-variable z-other z-readwrite z-ts">reducer</span><span class="z-punctuation z-separator z-comma z-ts">,</span> <span class="z-variable z-other z-readwrite z-ts">initialArg</span><span class="z-meta z-brace z-round z-ts">)</span></span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts">  <span class="z-keyword z-control z-flow z-ts">return</span> <span class="z-meta z-brace z-round z-ts">(</span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts">  <span class="z-keyword z-operator z-relational z-ts">&lt;</span><span class="z-variable z-other z-object z-ts">ActionContext</span><span class="z-punctuation z-accessor z-ts">.</span><span class="z-variable z-other z-property z-ts">Provider</span> <span class="z-variable z-other z-readwrite z-ts">value</span> <span class="z-keyword z-operator z-assignment z-ts">=</span> <span class="z-meta z-objectliteral z-ts"><span class="z-punctuation z-definition z-block z-ts">{</span> <span class="z-meta z-object z-member z-ts"><span class="z-variable z-other z-readwrite z-ts">dispatch</span></span><span class="z-punctuation z-definition z-block z-ts">}</span></span> <span class="z-keyword z-operator z-relational z-ts">&gt;</span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts">    <span class="z-keyword z-operator z-relational z-ts">&lt;</span><span class="z-variable z-other z-object z-ts">TodoContext</span><span class="z-punctuation z-accessor z-ts">.</span><span class="z-variable z-other z-property z-ts">Provider</span> <span class="z-variable z-other z-readwrite z-ts">value</span> <span class="z-keyword z-operator z-assignment z-ts">=</span> <span class="z-meta z-objectliteral z-ts"><span class="z-punctuation z-definition z-block z-ts">{</span> <span class="z-meta z-object z-member z-ts"><span class="z-variable z-other z-readwrite z-ts">state</span> </span><span class="z-punctuation z-definition z-block z-ts">}</span></span> <span class="z-keyword z-operator z-relational z-ts">&gt;</span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts"><span class="z-meta z-parameter z-object-binding-pattern z-ts">      <span class="z-punctuation z-definition z-binding-pattern z-object z-ts">{</span> <span class="z-variable z-parameter z-ts">children</span> <span class="z-punctuation z-definition z-binding-pattern z-object z-ts">}</span></span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts">      <span class="z-keyword z-operator z-relational z-ts">&lt;</span><span class="z-keyword z-operator z-arithmetic z-ts">/</span><span class="z-variable z-other z-readwrite z-ts">TodoContext</span><span class="z-keyword z-operator z-relational z-ts">&gt;</span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts">  <span class="z-keyword z-operator z-relational z-ts">&lt;</span><span class="z-keyword z-operator z-arithmetic z-ts">/</span><span class="z-variable z-other z-readwrite z-ts">ActionContext</span> <span class="z-keyword z-operator z-relational z-ts">&gt;</span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts">  <span class="z-meta z-brace z-round z-ts">)</span>
+</span></span></span><span class="z-source z-ts"><span class="z-meta z-function z-ts"><span class="z-meta z-block z-ts"><span class="z-punctuation z-definition z-block z-ts">}</span></span></span>
+</span></code></pre>
+<p>Context order is important here. We have to put the one that doesn't change outside of one that change.</p>
+<h2 id="note-from-dan">Note From Dan<a class="zola-anchor" href="#note-from-dan" aria-label="Anchor link for: note-from-dan" style="visibility: hidden;"></a>
+</h2>
+<p>Never thought Dan himself would comment about my blog post, But here we are!</p>
+<p><a rel="nofollow noreferrer" href="https://bsky.app/profile/sasiru.lk/post/3kl6quo5v472f">https://bsky.app/profile/sasiru.lk/post/3kl6quo5v472f</a></p>
+
+      </article>
+
+      
+      
+      <div class="reaction right" data-endpoint="https:&#x2F;&#x2F;reaction.sasiru.lk"></div>
+      
+
+      
+      
+      <div class="giscus"></div>
+      <script src="https://giscus.app/client.js"
+        data-repo="sasiruLK/blog"
+        data-repo-id="R_kgDOK3K8UQ"
+        data-category="General"
+        data-category-id="DIC_kwDOK3K8Uc4CwPiD"
+        data-mapping="pathname"
+        data-strict="0"
+        data-reactions-enabled="0"
+        data-reactions-enabled="1"
+        data-emit-metadata="0"
+        data-input-position="top"
+        data-theme="https://sasiru.lk/giscus_light.css"
+        data-lang="en"
+        crossorigin="anonymous"
+        async>
+</script>
+
+      
+    </div>
+
+    
+
+
+<footer>
+  <div class="left">
+    <div class="copyright">
+      © 2025 Sasiru Ravihansa Wijendra
+      
+      <span>|</span>
+      Built with <a href="https://www.getzola.org" rel="noreferrer" target="_blank">zola</a> and <a href="https://github.com/isunjn/serene" rel="noreferrer" target="_blank">serene</a>
+      
+    </div>
+  </div>
+
+  <div class="right">
+    
+    
+      
+    
+    
+    <a id="rss-btn" href="https://sasiru.lk/posts/feed.xml">RSS</a>
+    
+    
+
+    
+    
+    
+    <button id="theme-toggle" aria-label="theme switch">
+      <span class="moon-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18"><path d="M10 7C10 10.866 13.134 14 17 14C18.9584 14 20.729 13.1957 21.9995 11.8995C22 11.933 22 11.9665 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C12.0335 2 12.067 2 12.1005 2.00049C10.8043 3.27098 10 5.04157 10 7ZM4 12C4 16.4183 7.58172 20 12 20C15.0583 20 17.7158 18.2839 19.062 15.7621C18.3945 15.9187 17.7035 16 17 16C12.0294 16 8 11.9706 8 7C8 6.29648 8.08133 5.60547 8.2379 4.938C5.71611 6.28423 4 8.9417 4 12Z" fill="currentColor"></path></svg>
+</span>
+      <span class="sun-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18"><path d="M12 18C8.68629 18 6 15.3137 6 12C6 8.68629 8.68629 6 12 6C15.3137 6 18 8.68629 18 12C18 15.3137 15.3137 18 12 18ZM12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16ZM11 1H13V4H11V1ZM11 20H13V23H11V20ZM3.51472 4.92893L4.92893 3.51472L7.05025 5.63604L5.63604 7.05025L3.51472 4.92893ZM16.9497 18.364L18.364 16.9497L20.4853 19.0711L19.0711 20.4853L16.9497 18.364ZM19.0711 3.51472L20.4853 4.92893L18.364 7.05025L16.9497 5.63604L19.0711 3.51472ZM5.63604 16.9497L7.05025 18.364L4.92893 20.4853L3.51472 19.0711L5.63604 16.9497ZM23 11V13H20V11H23ZM4 11V13H1V11H4Z" fill="currentColor"></path></svg>
+</span>
+    </button>
+    
+  </div>
+</footer>
+
+
+
+
+<dialog id="rss-mask">
+  <div>
+    <a href="https:&#x2F;&#x2F;sasiru.lk&#x2F;posts&#x2F;feed.xml">https:&#x2F;&#x2F;sasiru.lk&#x2F;posts&#x2F;feed.xml</a>
+    
+    
+    <button autofocus aria-label="copy" data-link="https:&#x2F;&#x2F;sasiru.lk&#x2F;posts&#x2F;feed.xml" data-copy-icon="&lt;svg xmlns=&quot;http:&#x2F;&#x2F;www.w3.org&#x2F;2000&#x2F;svg&quot; viewBox=&quot;0 0 24 24&quot; width=&quot;18&quot; height=&quot;18&quot;&gt;&lt;path d=&quot;M6.9998 6V3C6.9998 2.44772 7.44752 2 7.9998 2H19.9998C20.5521 2 20.9998 2.44772 20.9998 3V17C20.9998 17.5523 20.5521 18 19.9998 18H16.9998V20.9991C16.9998 21.5519 16.5499 22 15.993 22H4.00666C3.45059 22 3 21.5554 3 20.9991L3.0026 7.00087C3.0027 6.44811 3.45264 6 4.00942 6H6.9998ZM5.00242 8L5.00019 20H14.9998V8H5.00242ZM8.9998 6H16.9998V16H18.9998V4H8.9998V6Z&quot; fill=&quot;currentColor&quot;&gt;&lt;&#x2F;path&gt;&lt;&#x2F;svg&gt;
+" data-check-icon="&lt;svg xmlns=&quot;http:&#x2F;&#x2F;www.w3.org&#x2F;2000&#x2F;svg&quot; viewBox=&quot;0 0 24 24&quot; width=&quot;18&quot; height=&quot;18&quot;&gt;&lt;path d=&quot;M10.0007 15.1709L19.1931 5.97852L20.6073 7.39273L10.0007 17.9993L3.63672 11.6354L5.05093 10.2212L10.0007 15.1709Z&quot; fill=&quot;currentColor&quot;&gt;&lt;&#x2F;path&gt;&lt;&#x2F;svg&gt;
+" >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18"><path d="M6.9998 6V3C6.9998 2.44772 7.44752 2 7.9998 2H19.9998C20.5521 2 20.9998 2.44772 20.9998 3V17C20.9998 17.5523 20.5521 18 19.9998 18H16.9998V20.9991C16.9998 21.5519 16.5499 22 15.993 22H4.00666C3.45059 22 3 21.5554 3 20.9991L3.0026 7.00087C3.0027 6.44811 3.45264 6 4.00942 6H6.9998ZM5.00242 8L5.00019 20H14.9998V8H5.00242ZM8.9998 6H16.9998V16H18.9998V4H8.9998V6Z" fill="currentColor"></path></svg>
+
+    </button>
+  </div>
+</dialog>
+
+
+
+  </main>
+</div>
+
+  
+<script src="/js/lightense.min.js"></script>
+
+
+  <script src="https://sasiru.lk/js/main.js"></script>
+</body>
+
+</html>
