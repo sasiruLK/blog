@@ -48,4 +48,4 @@ Fonts are loaded through **Astro's font API**, which optimises loading, subsets 
 
 ## Source
 
-The Lipi is MIT licensed and the source is available at the link in the footer.
+This site is built on the [Lipi](https://github.com/thelocalhoststudio/lipi) template, which is MIT licensed. The source for this site is on [GitHub](https://github.com/sasiruLK).

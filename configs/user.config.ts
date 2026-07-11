@@ -1,12 +1,12 @@
 import type { UserConfig } from "../src/site.config";
 
 const userConfig: UserConfig = {
-  title: "Lipi",
+  title: "Sasiru's Blog",
   description:
-    "A minimal editorial theme for Astro built for blogs, journals, travel writing, and long-form publishing.",
+    "Essays, notes, and writing from Sasiru Ravihansa — software engineer writing between filter coffees and terminal windows.",
 
-  url: "https://astro-lipi.pages.dev",
-  author: "John Doe",
+  url: "https://sasiru.lk",
+  author: "Sasiru Ravihansa",
 
   logo: "/logo.svg",
   avatar: "/avatar.png",
@@ -20,27 +20,25 @@ const userConfig: UserConfig = {
   footerLinks: [
     { title: "RSS", url: "/rss.xml" },
     { title: "Archive", url: "/archive" },
-    { title: "Source", url: "https://github.com/thelocalhoststudio/lipi" },
-    
+    { title: "GitHub", url: "https://github.com/sasiruLK" },
   ],
 
   social: [
     {
       title: "GitHub",
-      url: "https://github.com/thelocalhoststudio/lipi",
+      url: "https://github.com/sasiruLK",
       icon: "github",
     },
     {
       title: "X",
-      url: "https://x.com/",
+      url: "https://x.com/sasiruLK",
       icon: "x",
     },
     {
       title: "LinkedIn",
-      url: "https://linkedin.com/",
+      url: "https://linkedin.com/in/sasiruLK",
       icon: "linkedin",
     },
-    
   ],
 
   footerCredits: "Designed for reading. Built with Astro & Lipi",

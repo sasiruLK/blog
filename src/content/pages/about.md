@@ -1,19 +1,25 @@
 ---
 title: About
-description: Lipi is a typography-first Astro template for long-form writing, made by The Localhost Studio.
-updated: 2026-05-26
+description: Sasiru Ravihansa is a software engineer who writes about technology, ideas, and the occasional tangent.
+updated: 2026-07-10
 ---
 
-Lipi is a template for Astro, built for writers who care about how their words look on the page. It is not a general-purpose blog theme, and it is not trying to be. It is a publishing environment for essays, travel notes, developer journals, and personal archives: the kind of writing that benefits from a considered layout and a quiet interface.
+I'm Sasiru Ravihansa — a software engineer who enjoys building things and occasionally writing about them.
 
-Lipi's visual design draws inspiration from the [Kami](https://kami.tw93.fun) design language: warm neutrals, a constrained measure, generous spacing, and an interface that stays out of the way. The type is set in Literata, a serif face designed for reading at length. The layout holds under Cmd+P. The output is static HTML with minimal JavaScript.
+This site is where I put essays, technical notes, and observations that don't fit into a tweet or a pull request description. It's not updated on a schedule. It's updated when I have something worth saying.
 
 ---
 
-## The Localhost Studio
+## What I write about
 
-The Localhost Studio is a small independent studio building thoughtful tools for writers and publishers. We work at the intersection of typography, publishing, and the web, with a preference for things that are made carefully and maintained honestly.
+Most of what ends up here sits at the intersection of software engineering, systems thinking, and the quieter parts of life as a developer: the tools I reach for, the problems I've wrestled with, and the ideas I keep returning to.
 
-Lipi began as a personal template, became a design exploration, and eventually became something we thought was worth sharing. The inspiration from Kami runs through everything we make: the same warmth, the same restraint, the same conviction that the content should come first.
+Some posts are practical. Some are more reflective. The mix shifts depending on what's been on my mind.
 
-If you are building something with Lipi, or if you have a question about the design, you can find us at [The Localhost Studio](https://thelocalhoststudio.in) or through the links in the footer.
+---
+
+## Where to find me
+
+You can find my code on [GitHub](https://github.com/sasiruLK), my professional history on [LinkedIn](https://linkedin.com/in/sasiruLK), and occasional thoughts on [X](https://x.com/sasiruLK).
+
+If you want to reach me directly, email works: [sasiruravihansa@gmail.com](mailto:sasiruravihansa@gmail.com).
