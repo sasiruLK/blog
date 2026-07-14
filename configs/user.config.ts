@@ -12,7 +12,7 @@ const userConfig: UserConfig = {
   avatar: "/avatar.png",
 
   navigation: [
-    { title: "Writing", url: "/posts" },
+    { title: "Writing", url: "/posts/" },
     { title: "Archive", url: "/archive" },
     { title: "About", url: "/about" },
   ],
