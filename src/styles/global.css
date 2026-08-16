@@ -241,6 +241,19 @@ html {
     aspect-ratio: auto;
   }
 
+  /* A diagram is not prose and does not want the prose measure.
+     Text is set to ~65 characters because that is comfortable to read; a wide
+     diagram squeezed into the same column just renders its labels too small to
+     read. This lets a single image break out to the width it needs, centred on
+     the text column, and collapse back on narrow screens. */
+  .app-prose .gallery-single {
+    width: min(1180px, 92vw);
+    position: relative;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-block: 2rem;
+  }
+
   /* ── GLightbox overrides ─────────────────────────── */
   .glightbox-clean .gslide-description {
     @apply bg-background;
