@@ -191,11 +191,23 @@ The fix I've settled on is unglamorous: the doc carries a "verified on" date, an
 
 The design above is the honest version, and it has a hole I only found by testing it.
 
-The platform can build an application **exactly once.** Builds fire when an app is created; there is no rebuild path, nothing watching app repositories for new commits, and three separate guards reject a build for an app that already exists. Image Updater will deploy a newer image the moment one appears — but nothing ever builds one.
+The platform could build an application **exactly once.** Builds fired when an app was created; there was no rebuild path, and three separate guards rejected a build for an app that already existed. Image Updater would deploy a newer image the moment one appeared — but nothing ever built one.
 
-So the deploy half is genuinely automatic, and the build half fires once and retires. I found it by trying to run a build to verify the coordinator migration and getting a `409 Conflict` instead of a pipeline run. I had been describing this thing as fully automatic for weeks; the first time I exercised the path end to end, it wasn't.
+So the deploy half was genuinely automatic, and the build half fired once and retired. I found it by trying to run a build to verify the coordinator migration and getting a `409 Conflict` instead of a pipeline run. I had been describing this thing as fully automatic for weeks; the first time I exercised the path end to end, it wasn't.
 
-That's the next piece of design work, and it's a real one: rebuilds need a trigger, and every option — webhook, poll, manual button — is a different trade between latency, credentials I'd have to hold, and how much of someone else's repository I want to know about.
+The cause was one word in a schema:
+
+```sql
+app_name TEXT NOT NULL UNIQUE
+```
+
+That constraint encoded the assumption that an app is built once. Not a policy decision anywhere in the code — a uniqueness constraint written early, when creating an app and building it were the same event, and never revisited when they stopped being.
+
+It's fixed now. There's a rebuild endpoint that reuses the app's own previous parameters — repo, ref, port, replicas — so a rebuild can't quietly become an edit, and a button next to Sync in the console. SQLite can't drop a constraint, so the table gets rebuilt; the migration targets a canonical schema rather than preserving whatever columns it finds, which a test caught me getting wrong the first time.
+
+The interesting part was watching the whole loop run afterwards, for real, for the first time: request accepted, workflow dispatched, runner reporting back, a commit landing in the GitOps repo, Argo reconciling it. Every hop I'd designed on paper, actually firing in order.
+
+What's still missing is the *trigger*. A rebuild is a button I press, not something a push to an app repo causes — and every option for closing that gap (webhook, polling, scheduled) is a different trade between latency, credentials I'd have to hold, and how much of someone else's repository I want to know about. That one's still open.
 
 ## What it actually taught me
 
