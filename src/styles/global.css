@@ -230,6 +230,17 @@ html {
     transition: opacity 0.2s ease, filter 0.2s ease;
   }
 
+  /* A single image is not a gallery tile.
+     Uniform 3:2 crops are right for a grid of photos, where matching shapes are
+     the point. They are wrong for one diagram: object-cover plus a forced
+     aspect ratio silently crops the sides, and a wide diagram loses its outer
+     columns with nothing to indicate anything is missing. On its own, an image
+     keeps its real proportions. */
+  .gallery-single .gallery-item__image {
+    @apply h-auto object-contain;
+    aspect-ratio: auto;
+  }
+
   /* ── GLightbox overrides ─────────────────────────── */
   .glightbox-clean .gslide-description {
     @apply bg-background;
