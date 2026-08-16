@@ -1,129 +1,126 @@
 ---
-title: A personal PaaS on a $0 budget
-description: I built a small Heroku on Oracle's free tier. The interesting part wasn't the architecture — it was the four ways it quietly lied to me.
+title: Designing a personal PaaS on a $0 budget
+description: I work on an internal developer platform by day and ran my side projects on Vercel by night. I wanted to know what both were doing while I wasn't looking, so I built the small version myself.
 published: 2026-08-16
 category: Engineering
-tags: [kubernetes, gitops, argocd, oracle-cloud, infrastructure]
+tags: [system-design, kubernetes, gitops, argocd, oracle-cloud]
 cover: /images/tinycloud-architecture.png
 draft: false
 ---
 
-I wanted to understand GitOps properly, and I don't think you can do that by reading about it. You have to run one long enough for it to break in ways the tutorials skip.
+At work I spend most of my time on our internal developer platform — the thing other engineers push to without having to think about what happens next. That's the whole point of it. But standing on the other side of that abstraction changes how you see it. You stop experiencing "it just deploys" as a convenience and start seeing the machinery holding it up, mostly because you are the one holding it.
 
-So I built a small personal platform on Oracle Cloud's Always Free tier. Push a commit, and a few minutes later it is running on Kubernetes with TLS, under a real domain. No `kubectl apply`. Every box in the diagram below costs nothing to run.
+Before that, everything I built for myself lived on Vercel. Push to main, get a URL. I never once thought about it, which is the highest compliment you can pay a platform and also the reason I never learned anything from it. It stayed magic because it never gave me a reason to look.
 
-![The architecture: a push flows through GitHub Actions and GHCR into Argo CD, which reconciles onto k3s. Secrets come from OCI Vault at runtime; alarms leave the cluster entirely.](/images/tinycloud-architecture.png)
+So the two things met in the middle. The IDP work gave me the vocabulary — desired state, reconciliation, drift, the difference between *deploying* something and *converging* on it — and I wanted to find out whether I understood any of it well enough to build the small version myself. Not to replace Vercel. To find out what Vercel is doing while I'm not looking.
 
-The architecture is the boring part. What follows is what actually happened.
+I built it on Oracle Cloud's Always Free tier, partly for the constraint and partly because $0 is a satisfying budget. Push a commit, and a few minutes later it is running on Kubernetes with TLS under a real domain.
 
-## The constraints shape everything
+No `kubectl apply`. Every box below costs nothing to run.
 
-Free tiers are not small versions of the paid thing. They are a different product with different holes, and you find the holes by hitting them.
+![Four flows through the system: a push travels from GitHub Actions through GHCR into Argo CD and onto the cluster; secrets arrive from OCI Vault at runtime; visitor traffic enters through Traefik; alerts leave the cluster to email.](/images/tinycloud-architecture.gif)
 
-Oracle's ARM allowance is 2 OCPUs and 12 GB of memory — and that is the whole allowance, not per instance. Two nodes consume it entirely. There is no third VM, which means no spare capacity, which means autoscaling has nothing to scale into and a build host has nowhere to live.
+That animation is the whole design in four passes — deploy, secrets, traffic, alerts. The rest of this post is why each one is shaped that way.
 
-Then there were the services that simply refuse. The container registry returns:
+## The requirement, stated properly
+
+"Push code, get a running app" hides at least five separate problems:
+
+1. Something must **build** a container image, on hardware I don't have spare.
+2. Something must **store** it, addressably, so a specific version can be named later.
+3. Something must **decide** what should be running — and that decision has to survive me forgetting what I did.
+4. Something must **make reality match** that decision, continuously, not once.
+5. It has to keep working when a piece of it dies, including the piece that would have told me.
+
+Most of the interesting design pressure comes from 3, 4 and 5. Building and storing images is largely solved by other people.
+
+## The control loop is the whole idea
+
+The core decision is **pull, not push.**
+
+A push-based pipeline ends with CI running a deploy command. It works, and it has a quiet flaw: CI's job finishes at the moment of deployment, so nothing is responsible for the cluster afterwards. If someone edits a live resource by hand, or a controller mangles something at 3am, the pipeline has no opinion. It already succeeded. The cluster drifts and the last green checkmark stays green.
+
+A pull-based loop inverts that. A controller inside the cluster holds a repository as the **desired state** and continuously compares it against live state:
+
+- Deploying is a git commit. There is no other entry point.
+- Drift is not just detected, it is *corrected* — the controller reverts hand edits.
+- Rollback is `git revert`, because the previous desired state is a commit.
+- The audit log is the git log, and it is complete by construction.
+
+The cost is a layer of indirection, and one genuinely subtle failure mode I'll come back to.
+
+Concretely: a push triggers a GitHub Actions build. The image goes to GHCR tagged with the **commit SHA** — never `latest`, because `latest` makes "which version is running?" unanswerable and rollback a guess. Argo CD Image Updater notices the new digest and writes the tag into the GitOps repository as a commit. Argo CD sees that commit and reconciles.
+
+The loop closes without me. Note what Image Updater does *not* do: it doesn't touch the cluster. It writes to git and lets the same reconciliation path handle it, so there is exactly one way anything is deployed.
+
+## Why builds run on someone else's computer
+
+The whole ARM allowance is 2 OCPUs and 12 GB — not per instance, total. Two k3s nodes consume all of it. There is no third VM, so a build host has nowhere to live.
+
+The design response is to split the build plane in two. I run a **coordinator** that owns the queue, the job lifecycle and the logs. It dispatches the actual `docker build` to GitHub Actions, and the runner reports progress back over HTTP. The state and the history stay mine; only the compute is borrowed.
+
+This is worth generalising: when a resource is scarce, look for the part of the job that actually needs it. "Building" felt indivisible until I separated *deciding what to build and remembering what happened* from *executing the build*. Only the second half needs a machine.
+
+## Secrets: pull at runtime, never store
+
+Secrets can't live in git, so they need their own path into the cluster.
+
+They live in a managed vault, and an operator inside the cluster pulls them at runtime into Kubernetes Secrets. The repository declares *which* secret goes where, never the value. Rotation happens in the vault and propagates on the next refresh.
+
+The design rule I'd keep on any project: **if losing one object locks you out permanently, it must exist in two places, and you must have tested the second one.** My console login is a GitHub OAuth app. If that secret vanished, the platform would come back up perfectly healthy and refuse to let anyone in, forever. That asymmetry — healthy but locked out — is worth designing against specifically.
+
+## Where the state lives is the hard part
+
+Everything above is stateless and therefore easy. One component isn't: the build coordinator keeps every build and deploy record in a single SQLite file.
+
+That one file forces four decisions:
+
+**It pins the pod to a node.** The volume is node-local storage — a directory on one machine's disk. So the pod carries a node selector, permanently. If it ever scheduled elsewhere, it would either find an empty directory and migrate a fresh schema (history apparently gone) or refuse to start at all. The second failure is much better than the first, and the design should prefer the loud one.
+
+**It forbids rolling updates.** SQLite tolerates concurrent readers, not two independent writers across a read-write-once volume. A rolling update briefly runs both pods. So this deployment uses `Recreate` — a few seconds of downtime per deploy, in exchange for never corrupting the database. For a queue that already tolerates the coordinator being briefly unreachable, that is the correct trade.
+
+**It can't use the obvious volume.** Mounting the existing file from the host is forbidden: the namespace enforces the `restricted` Pod Security Standard, which blocks `hostPath` outright. I could have relaxed the namespace — and lowered the floor for every other workload in it, to save one migration.
+
+**Seeding order matters more than it sounds.** Start the pod against an empty volume and it creates a schema, reports healthy, and serves a console with zero history. That is indistinguishable from data loss, and nothing alerts on it. So the volume gets seeded *before* the workload ever runs, with checksums compared on both sides. **"Healthy and empty" is a failure mode worth naming.**
+
+## Designing for the failure you can't see
+
+The last requirement — keep working when a piece dies — mostly means being honest about *who watches the watchman*.
+
+Alarms are evaluated by the cloud's monitoring service, outside the cluster, and delivered by email. This matters more than it sounds: monitoring that lives inside the cluster it monitors goes down exactly when you need it, and its silence is indistinguishable from everything being fine. Anything that alerts on your system should fail *independently* of your system.
+
+Build logs are shipped off-cluster too, for a related reason: the primary record is that single SQLite file on one node's disk, and node-local storage does not survive the node. The copy is best-effort by design — if the log endpoint is slow, entries are dropped rather than queued, because the secondary copy must never be able to stall the thing producing it.
+
+The gap I still have: the external prober that watches from outside is capped on the free tier, so my time-to-detection for a full outage is tens of minutes rather than one. Known, measured, not yet fixed.
+
+## What the free tier actually forces
+
+Free tiers are not smaller versions of the paid product. They are a different product with different holes, and you find the holes by hitting them.
+
+The container registry, for instance, doesn't fail on credentials — it refuses at the tenancy level:
 
 ```
 HTTP 403  code: FREE_TIER_NOT_SUPPORTED
 ```
 
-That is a tenancy-level block. No amount of fixing credentials or IAM policies changes it, which I established the slow way before accepting it and moving to GitHub's registry instead. Managed Kubernetes, Functions, API Gateway, DNS, and about ten other services are the same story: the API answers, the limit is zero.
+No amount of fixing IAM changes that, which I established the slow way. Managed Kubernetes, Functions, API Gateway and about ten others are the same story: the API answers, the limit is zero.
 
-The useful habit that came out of this: **check the limit, not the documentation.** A service showing `available: 0` is a wall. A marketing page saying "always free" is not a promise about your tenancy.
+The habit that came out of it: **check the limit, not the documentation.** A service reporting `available: 0` is a wall. A page saying "always free" is not a promise about your tenancy. I later found I'd written off a database service that was in fact available, because I checked the paid shapes sitting next to the free one — the same mistake in the opposite direction.
 
-## The shape of it
+## What I got wrong
 
-A push to an application repository triggers a GitHub Actions build. The image goes to GHCR tagged with the commit SHA — never `latest`, because `latest` makes rollbacks a guessing game. Argo CD Image Updater notices the new digest and writes the new tag back into the GitOps repository as a commit. Argo CD sees that commit and reconciles it onto the cluster.
+The design above is the honest version, but it has a hole I only found by testing it.
 
-The loop closes without me. The only thing I do is push code.
+The platform can build an application **exactly once.** Builds fire when an app is created; there is no rebuild path, nothing watching app repositories for new commits, and three separate guards that reject a build for an app that already exists. Image Updater will deploy a newer image the moment one appears — but nothing ever builds one.
 
-Builds run in GitHub Actions rather than on my own hardware, and that was a real decision rather than laziness. I have a build coordinator that owns the queue, the job lifecycle and the logs — but the actual `docker build` needs a machine, and I don't have a spare one. So the coordinator dispatches to a workflow and the runner reports back over HTTP. The queue, history and logs stay mine; only the compute is borrowed.
+So the deploy half is genuinely automatic and the build half fires once and retires. I found it by trying to run a build to verify a migration and getting a `409 Conflict` instead of a pipeline run. I had been describing this thing as fully automatic for weeks; the first time I exercised the path end to end, it wasn't.
 
-## Nobody could decrypt my secrets, including me
+That's the next piece of design work, and it's a real one: rebuilds need a trigger, and every option — webhook, poll, manual button — is a different trade between latency, credentials I'd have to hold, and how much of someone else's repository I want to know about.
 
-The repository contained a `.sops.yaml` and an encrypted secrets file. It looked like the responsible thing: credentials in git, but safely.
+Which is the part I didn't expect to get out of this. I set out to learn how a platform works and mostly learned how much of one is *judgement* — where to put state, which failure to prefer, what to refuse to automate. Vercel makes all of those calls for me and I never see one of them. Our IDP makes them for our engineers and they mostly shouldn't have to see them either. That invisibility is the product working. It just costs somebody, somewhere, a fairly long afternoon deciding whether a rolling update can corrupt a SQLite file.
 
-It was decorative. Nothing in the cluster could decrypt SOPS — no operator, no key. That much I already knew, and had planned to fix.
+I'm better at my day job for having built the bad version of it.
 
-What I hadn't checked was the other end. The file was encrypted to an age public key whose **private half existed nowhere**. Not on the machine that wrote it, not in a password manager, nowhere. `sops` and `age` weren't even installed.
+---
 
-So it wasn't a secret store, and it wasn't a backup either. It was an encrypted file that no living person could open, sitting in a repository, looking exactly like a safety net. If I had ever needed to rebuild from it, I would have discovered that during the emergency.
-
-Deleting it was the easy part. The uncomfortable part was the question it raised: **what else looks like a backup?** The answer was four credentials — the GitHub OAuth app behind the console login, a PAT, a shared bearer token and a registry pull secret — that existed only as live objects in the cluster. Not in a repository, not in a vault, not anywhere. A cluster rebuild would have restored every manifest and no credential, and the failure would not have been obvious: the console would come back up and simply refuse to let anyone in, forever.
-
-They live in OCI Vault now, read back into the cluster at runtime by External Secrets. The rule I follow since: if losing one object would lock me out, it needs to exist in two places, and I need to have tested the second one.
-
-## Four ways the cluster lied to me
-
-### Two owners, one object
-
-I moved a Namespace manifest from one Argo application into another. Reasonable-looking change. Both applications now declared the same object, with different labels.
-
-Server-side apply gives each manager ownership of the fields it declares and removes the ones it doesn't. So each sync reverted the other's labels. Pod Security enforcement switched itself on and off every few minutes, and both applications sat permanently out of sync while reporting successful syncs. Argo told me plainly once I looked — `SharedResourceWarning` — but the symptom I noticed first was a security setting that would not stay applied.
-
-The fix is boring: one object, one owner. The lesson is that *"applied successfully"* and *"in the state I asked for"* are different claims.
-
-### A field git never claimed
-
-An application reported `OutOfSync` for days while every single sync succeeded. The diff was one field:
-
-```yaml
-source:
-  directory:
-    recurse: false
-```
-
-`false` is the zero value, so the API server drops the field entirely. Git asked for a state the cluster can never return. The diff could not close, and the sync had nothing to do — so it succeeded, forever, while never agreeing.
-
-I hit this three separate times: on that field, then on CRD defaults in an ExternalSecret template, then on defaults one level deeper in the same resource. It is the same bug wearing different hats. Anything that reports drift by comparing declared state to live state has this failure mode, and the giveaway is always the same — **a resource that syncs successfully and stays out of sync.**
-
-### `prune: true` and a moved manifest
-
-This is the one that nearly cost me the platform.
-
-Having decided one namespace should have one owner, I removed the Namespace from the application that shouldn't own it. Clean change. Except the live object was *tracked* to that application, and that application syncs with `prune: true`.
-
-Removing a resource from a pruning application's desired state doesn't orphan it. It deletes it. And deleting a namespace deletes everything inside it — the API, the console, the ingress proxy, the auth proxy, all of it, in one reconcile that would have arrived within about three minutes.
-
-I caught it because I went looking for which application held the tracking annotation before assuming I knew. The safe version takes two pushes: first mark the object `Prune=false` and let that land, then remove it. Ownership handovers are a two-step operation, and the intuition that "removing a line from a file is a small change" is exactly wrong here.
-
-### Resources that exist in no repository
-
-Argo CD's Image Updater ran happily for a month. It was described in no repository at all — installed once by hand, then forgotten. A rebuild from my own bootstrap scripts would have produced a cluster that looked correct and silently never updated an image again.
-
-The same was true of the secret store, and of a service account left behind by a mechanism I had already replaced — which was still holding a cluster-wide permission to read a credential it no longer needed.
-
-GitOps doesn't make this class of problem impossible. It makes it *invisible*, because everything you can see is beautifully declarative and the gap doesn't show up anywhere. The only defence I've found is to periodically ask the cluster what it is running and compare that to what the repository says — rather than the other way round.
-
-## Moving the coordinator into the cluster
-
-The build coordinator ran as a systemd unit on one node. I updated it by cross-compiling a binary, copying it over SSH and restarting the service. Two outages came directly from that: once a stale binary served a 404 for an endpoint that existed in the source, and once I simply forgot to redeploy.
-
-Everything else on the platform deploys itself on push. This didn't, purely because it held state — a single SQLite file with every build and deploy record.
-
-Moving it meant moving the database. The obvious approach, mounting the existing file into the pod, is unavailable: the namespace enforces the `restricted` Pod Security Standard, which forbids `hostPath` volumes outright. Relaxing that for one workload would lower the floor for every other workload in the namespace.
-
-So the file went onto a node-local volume, seeded before the pod ever started. That ordering matters more than it sounds. Start the pod first and it creates an empty schema, comes up perfectly healthy, and shows a console with zero build history — which is indistinguishable from having lost the lot. I bound the volume with a temporary pod, copied the database in, verified the checksums matched on both sides, and only then let Argo start the real thing.
-
-It came up with all its history. But "healthy and empty" is a failure mode worth naming, because nothing alerts on it.
-
-## What's still broken
-
-The platform can build an application exactly once.
-
-Builds fire when an app is created. There is no rebuild endpoint, nothing watching application repositories for new commits, and three separate guards that reject a build for an app that already exists. Image Updater will faithfully deploy a newer image the moment one appears in the registry — but nothing ever builds one.
-
-So the deploy half is genuinely automatic and the build half fires once and retires. I found this by trying to run a build to test the coordinator migration, and getting a `409 Conflict` instead of a pipeline run. Which is its own small lesson: I had been describing this thing as fully automatic for weeks, and the first time I actually exercised the path end to end, it wasn't.
-
-That's next.
-
-## The thread running through all of it
-
-Every failure here was an ownership question wearing a costume.
-
-Which application owns this object? Which field does this manager own? Does this thing exist in a repository, or only in my cluster? Is this file a backup, or does it just look like one?
-
-None of them were exotic Kubernetes problems. They were all versions of *"I assumed I knew who was responsible for this, and I was wrong."* The tooling is very good at telling you it succeeded. It is much worse at telling you that what succeeded wasn't what you meant.
-
-The platform runs nine applications, costs nothing, deploys on push, keeps its secrets in a vault, and alerts me from outside the cluster when it breaks. I trust it considerably more now that I know exactly which parts of it I shouldn't.
+*There's a companion post coming on the four ways this cluster quietly lied to me — two controllers owning one object, a field git can never claim, and a one-line change that nearly deleted the namespace. Those are debugging stories rather than design ones, so they get their own post.*

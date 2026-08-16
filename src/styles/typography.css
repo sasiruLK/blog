@@ -88,8 +88,20 @@
      ========================================= */
 
   .app-prose :where(img) {
-    @apply rounded-sm;    
+    @apply rounded-sm;
     margin-block: 0;
+    /* GLightbox ships a bare `img` rule -- object-fit: cover, max-height: 100vh,
+       min-width: 200px -- which applies to every image on the site, not just the
+       ones it manages. A wide diagram gets cropped to the middle slice rather
+       than scaled down, with no scrollbar to explain why. These undo it for
+       prose images. */
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: auto;
+    max-height: none;
+    object-fit: contain;
+    margin-inline: auto;
   }
 
   html[data-theme="dark"] .app-prose :where(img) {
