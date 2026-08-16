@@ -2,8 +2,7 @@ import type { UserConfig } from "../src/site.config";
 
 const userConfig: UserConfig = {
   title: "Sasiru's Blog",
-  description:
-    "Essays, notes, and writing from Sasiru Ravihansa — software engineer writing between filter coffees and terminal windows.",
+  description: "Notes on software and the things I build.",
 
   url: "https://sasiru.lk",
   author: "Sasiru Ravihansa",
