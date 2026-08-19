@@ -5,7 +5,7 @@ published: 2026-08-19
 category: Engineering
 tags: [omarchy, qml, quickshell, linux, security, totp]
 cover: /images/omarchy-2fa.png
-draft: true
+draft: false
 ---
 
 The codes live on my phone, and my phone is never where I am. Not a hardship — six digits, twice a day, a few seconds of reaching. But it's the kind of small friction you stop noticing until something makes it optional, and then you notice it constantly.
@@ -75,7 +75,7 @@ My favourite thing I learned here is that "scan the QR code" on a desktop doesn'
 
 The code is already on your screen. It's in the browser tab where the site is walking you through setup. So `grim` photographs the screen, `zbarimg` decodes it, and out comes the `otpauth://` URI the site would have given your phone. All three tools ship with Omarchy already, which meant the finished plugin has no dependencies a user has to install — no `sudo`, no installer script, nothing outside its own directory.
 
-I got the interaction wrong the first time, though, and only found out when someone else tried it. The first version closed the panel, then opened a region selector so you could drag a box around the code. Reasonable on paper. In practice you click "scan", the interface vanishes, and you're left dragging a rectangle over a browser wondering whether anything is happening.
+I got the interaction wrong the first time, and only worked that out by using it on a real enrolment page. The first version closed the panel, then opened a region selector so you could drag a box around the code. Reasonable on paper. In practice you click "scan", the interface vanishes, and you're left dragging a rectangle over a browser wondering whether anything is happening.
 
 It now photographs the whole screen *with the panel still open* — it's a small card in a corner, the code is rarely underneath it — finds the link and adds the account. Nothing moves. The region selector is still there for when the full-screen pass finds nothing, but most of the time there's no cropping step at all, because there didn't need to be one.
 
